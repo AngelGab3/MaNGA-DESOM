@@ -1,0 +1,11 @@
+data/*.npz
+data/*.csv
+data/*.fits
+data/*.fits.gz
+!data/.gitkeep
+models/*.h5
+models/*.hdf5
+!models/.gitkeep
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
