@@ -880,6 +880,7 @@ async function loadFullConfig() {
     if (pre.continuum_rest) document.getElementById('cfg-pre-continuum-rest').value = JSON.stringify(pre.continuum_rest);
     if (pre.max_interpolation_gap_A) document.getElementById('cfg-pre-max-gap').value = pre.max_interpolation_gap_A;
     if (pre.min_good_rebinned) document.getElementById('cfg-pre-min-good').value = pre.min_good_rebinned;
+    if (pre.max_workers !== undefined) document.getElementById('cfg-pre-workers').value = pre.max_workers;
     if (pre.covariance_in_binning !== undefined) document.getElementById('cfg-pre-covariance').checked = pre.covariance_in_binning;
 
     // 2. Sample
@@ -946,6 +947,7 @@ async function saveFullConfig() {
         continuum_rest: parseSafe(document.getElementById('cfg-pre-continuum-rest').value, [4050.0, 4150.0]),
         max_interpolation_gap_A: parseFloat(document.getElementById('cfg-pre-max-gap').value) || 50.0,
         min_good_rebinned: parseInt(document.getElementById('cfg-pre-min-good').value) || 3900,
+        max_workers: parseInt(document.getElementById('cfg-pre-workers').value) || 0,
         covariance_in_binning: document.getElementById('cfg-pre-covariance').checked,
       },
       sample: {

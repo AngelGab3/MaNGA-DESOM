@@ -24,6 +24,7 @@ def main() -> None:
     parser.add_argument("--epochs-desom1", type=int, default=None, help="Override DESOM-1 iterations")
     parser.add_argument("--epochs-desom2", type=int, default=None, help="Override DESOM-2 iterations")
     parser.add_argument("--batch-size", type=int, default=None, help="Batch size for training")
+    parser.add_argument("--workers", type=int, default=None, help="Number of parallel CPU workers for Stage 1 (0 = Auto)")
     parser.add_argument("--split-mode", choices=["galaxy", "spectrum"], default=None, help="Split unit for stage 2")
     parser.add_argument("--map-distance", choices=["manhattan", "paper"], default=None, help="SOM grid distance for stages 3-4")
     args = parser.parse_args()
@@ -48,6 +49,8 @@ def main() -> None:
             sys.argv = ["run_stage1", "--storage", args.storage, "--sample", str(args.sample)]
             if args.run_id:
                 sys.argv.extend(["--run-id", args.run_id])
+            if args.workers is not None:
+                sys.argv.extend(["--workers", str(args.workers)])
             stage1_main()
 
         if "2" in args.stages:

@@ -460,6 +460,10 @@ class DashboardAPI:
                 "--run-id",
                 self.cfg.run_id,
             ]
+            if stage == "1":
+                workers_val = self.cfg["preprocessing"].get("max_workers", 0)
+                if workers_val > 0:
+                    cmd.extend(["--workers", str(workers_val)])
 
             log_file = self.cfg.logs_dir / f"stage_{stage}.log"
             self.cfg.logs_dir.mkdir(parents=True, exist_ok=True)

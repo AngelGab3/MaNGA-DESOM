@@ -345,6 +345,11 @@
                 <input type="number" id="cfg-pre-min-good" value="3900" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
                 <span class="text-[10px] text-slate-500">Criterio ngoodpixels ≥ 3900</span>
               </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Hilos en Paralelo CPU (max_workers)</label>
+                <input type="number" id="cfg-pre-workers" value="0" min="0" max="64" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-emerald-400/80">⚡ 0 = Auto (núcleos disponibles - 1)</span>
+              </div>
               <div class="sm:col-span-2 flex items-center space-x-2 pt-1">
                 <input type="checkbox" id="cfg-pre-covariance" checked class="rounded bg-space-900 border-space-600 text-cyan-500 focus:ring-0">
                 <label for="cfg-pre-covariance" class="text-xs text-slate-300 cursor-pointer">

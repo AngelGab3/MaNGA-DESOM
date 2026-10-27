@@ -153,6 +153,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "em_line_half_width_bins": 3,
         # Emission lines centers (at rest) to protect from high-flux cut
         "em_lines": [3727.0, 4861.0, 4959.0, 5007.0, 6563.0, 6584.0, 6717.0, 6731.0],
+        # Parallel multiprocessing workers (0 = auto-detect available CPU cores minus 1)
+        "max_workers": 0,
     },
 
     "training": {

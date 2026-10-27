@@ -443,3 +443,26 @@ def process_single_galaxy(
     atomic_save_json(manifest_path, manifest)
 
     return summary
+
+
+def _worker_process_galaxy_task(
+    args: Tuple[Dict[str, Any], str, str, float, bool]
+) -> Tuple[str, Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Worker task for concurrent.futures multiprocessing.
+    Returns: (plateifu, summary_dict_or_None, error_str_or_None)
+    """
+    cfg_raw, plateifu, manga_id, z, force_recompute = args
+    from ..config import Config
+    cfg = Config(config_dict=cfg_raw)
+    try:
+        res = process_single_galaxy(
+            cfg=cfg,
+            plateifu=plateifu,
+            manga_id=manga_id,
+            redshift=z,
+            force_recompute=force_recompute,
+        )
+        return plateifu, res, None
+    except Exception as e:
+        return plateifu, None, str(e)
