@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DESOM: Galaxy Spectra & Spatially Resolved Diversity Dashboard</title>
+  <!-- Tailwind CSS & FontAwesome -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Plotly.js for interactive astrophysics charts -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            space: {
+              900: '#0a0d14',
+              800: '#0f172a',
+              700: '#1e293b',
+              600: '#334155',
+            },
+            astro: {
+              cyan: '#38bdf8',
+              purple: '#a855f7',
+              pink: '#ec4899',
+              gold: '#fbbf24',
+              green: '#34d399',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .glow-cyan { box-shadow: 0 0 15px rgba(56, 189, 248, 0.25); }
+    .glow-purple { box-shadow: 0 0 15px rgba(168, 85, 247, 0.25); }
+  </style>
+</head>
+<body class="bg-space-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-astro-cyan selection:text-space-900">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-space-800/90 backdrop-blur border-b border-space-700 sticky top-0 z-50 px-6 py-3.5">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-4">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <i class="fa-solid fa-atom text-white text-lg"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-cyan-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
+            DESOM Explorer & Dashboard
+          </h1>
+          <p class="text-xs text-slate-400">Deep Embedded Self-Organizing Maps · MaNGA Survey (DR15)</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <!-- Hardware Badge -->
+        <div id="hw-badge" class="px-3 py-1 rounded-full text-xs font-medium bg-space-700 border border-space-600 text-slate-300 flex items-center space-x-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="hw-text">Detectando hardware...</span>
+        </div>
+
+        <!-- Experiment Selector & Manager -->
+        <div class="flex items-center space-x-1.5 bg-space-700/60 p-1 rounded-xl border border-space-600">
+          <div class="flex items-center space-x-1.5 px-2 py-1">
+            <i class="fa-solid fa-flask-vial text-astro-cyan text-xs"></i>
+            <span class="text-xs text-slate-400 hidden sm:inline">Corrida:</span>
+            <select id="run-select" class="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer max-w-[160px] truncate">
+              <option value="" disabled selected>Cargando...</option>
+            </select>
+          </div>
+          <button onclick="openManageRunsModal()" class="px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white bg-space-800 hover:bg-space-600 rounded-lg transition border border-space-600/70 flex items-center space-x-1" title="Historial y gestor de corridas">
+            <i class="fa-solid fa-folder-tree text-astro-purple text-xs"></i>
+            <span class="hidden md:inline">Gestionar</span>
+          </button>
+          <button onclick="openNewRunModal()" class="px-2.5 py-1 text-xs font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg transition shadow flex items-center space-x-1" title="Crear nueva corrida o serie">
+            <i class="fa-solid fa-plus text-xs"></i>
+            <span class="hidden sm:inline">Nueva Corrida</span>
+          </button>
+        </div>
+
+        <button onclick="refreshAll()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-space-700 transition" title="Actualizar datos">
+          <i class="fa-solid fa-rotate text-sm"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="bg-space-800 border-b border-space-700/80 px-6">
+    <div class="max-w-7xl mx-auto flex space-x-1 overflow-x-auto py-2">
+      <button onclick="switchTab('dataset')" id="tab-btn-dataset" class="tab-btn active px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 text-white bg-space-700 border border-cyan-500/30">
+        <i class="fa-solid fa-chart-pie text-astro-cyan"></i>
+        <span>1. Demografía del Dataset</span>
+      </button>
+
+      <button onclick="switchTab('pipeline')" id="tab-btn-pipeline" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 text-slate-400 hover:text-white hover:bg-space-700/50">
+        <i class="fa-solid fa-play text-astro-gold"></i>
+        <span>2. Control & Ejecución</span>
+      </button>
+
+      <button onclick="switchTab('preprocessing')" id="tab-btn-preprocessing" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 text-slate-400 hover:text-white hover:bg-space-700/50">
+        <i class="fa-solid fa-filter text-emerald-400"></i>
+        <span>3. Diagnóstico de Selección</span>
+      </button>
+
+      <button onclick="switchTab('desom1')" id="tab-btn-desom1" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 text-slate-400 hover:text-white hover:bg-space-700/50">
+        <i class="fa-solid fa-wave-square text-astro-purple"></i>
+        <span>4. DESOM-1 (Espectros 15×15)</span>
+      </button>
+
+      <button onclick="switchTab('desom2')" id="tab-btn-desom2" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 text-slate-400 hover:text-white hover:bg-space-700/50">
+        <i class="fa-solid fa-network-wired text-astro-pink"></i>
+        <span>5. DESOM-2 (Galaxias 10×10)</span>
+      </button>
+
+      <button onclick="switchTab('gallery')" id="tab-btn-gallery" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 text-slate-400 hover:text-white hover:bg-space-700/50">
+        <i class="fa-solid fa-images text-blue-400"></i>
+        <span>6. Figuras & Archivos</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+
+    <!-- ================================================================= -->
+    <!-- TAB 1: DEMOGRAFÍA & ESTADÍSTICAS DEL DATASET                      -->
+    <!-- ================================================================= -->
+    <section id="tab-dataset" class="tab-content space-y-6">
+      
+      <!-- Top Overview KPI Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-space-800 p-5 rounded-2xl border border-space-700 relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Muestra de Galaxias</span>
+            <i class="fa-solid fa-galaxy text-astro-cyan text-lg"></i>
+          </div>
+          <div class="mt-3 flex items-baseline space-x-2">
+            <span id="kpi-total-galaxies" class="text-3xl font-extrabold text-white">0</span>
+            <span class="text-xs text-slate-400">seleccionadas</span>
+          </div>
+          <div class="mt-2 text-xs text-slate-400 flex items-center space-x-2">
+            <span id="kpi-split-summary">Cargando splits...</span>
+          </div>
+          <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-cyan-500/5 rounded-full blur-xl"></div>
+        </div>
+
+        <div class="bg-space-800 p-5 rounded-2xl border border-space-700 relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Redshift Mediano</span>
+            <i class="fa-solid fa-compass text-astro-purple text-lg"></i>
+          </div>
+          <div class="mt-3 flex items-baseline space-x-2">
+            <span id="kpi-z-median" class="text-3xl font-extrabold text-white">0.000</span>
+            <span class="text-xs text-slate-400">mediana (z)</span>
+          </div>
+          <div class="mt-2 text-xs text-slate-400">
+            Rango: <span id="kpi-z-range" class="font-medium text-slate-200">0.000 – 0.000</span>
+          </div>
+          <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-purple-500/5 rounded-full blur-xl"></div>
+        </div>
+
+        <div class="bg-space-800 p-5 rounded-2xl border border-space-700 relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Promedio de Redshift</span>
+            <i class="fa-solid fa-calculator text-astro-gold text-lg"></i>
+          </div>
+          <div class="mt-3 flex items-baseline space-x-2">
+            <span id="kpi-z-mean" class="text-3xl font-extrabold text-white">0.000</span>
+            <span class="text-xs text-slate-400">&mu; &plusmn; &sigma;</span>
+          </div>
+          <div class="mt-2 text-xs text-slate-400">
+            Desv. Estándar: <span id="kpi-z-std" class="font-medium text-slate-200">&plusmn; 0.000</span>
+          </div>
+          <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-amber-500/5 rounded-full blur-xl"></div>
+        </div>
+
+        <div class="bg-space-800 p-5 rounded-2xl border border-space-700 relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Resolución Espacial</span>
+            <i class="fa-solid fa-shapes text-emerald-400 text-lg"></i>
+          </div>
+          <div class="mt-3 flex items-baseline space-x-2">
+            <span id="kpi-baxels-mean" class="text-3xl font-extrabold text-white">0</span>
+            <span class="text-xs text-slate-400">baxels / galaxia</span>
+          </div>
+          <div class="mt-2 text-xs text-slate-400">
+            Total espectros: <span id="kpi-total-spectra" class="font-medium text-slate-200">0</span>
+          </div>
+          <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-emerald-500/5 rounded-full blur-xl"></div>
+        </div>
+      </div>
+
+      <!-- Demographic Charts Row -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Redshift Histogram -->
+        <div class="bg-space-800 p-5 rounded-2xl border border-space-700">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-sm font-semibold text-white">Distribución de Redshift (z)</h2>
+              <p class="text-xs text-slate-400">Histograma de frecuencias de la muestra activa</p>
+            </div>
+            <span class="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-astro-cyan border border-cyan-500/20">0 &lt; z &lt; 0.15</span>
+          </div>
+          <div id="chart-redshift-hist" class="h-64 w-full"></div>
+        </div>
+
+        <!-- Splits Distribution -->
+        <div class="bg-space-800 p-5 rounded-2xl border border-space-700">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-sm font-semibold text-white">Partición de Datos (Splits)</h2>
+              <p class="text-xs text-slate-400">División por galaxia (70% Train, 15% Val, 15% Test)</p>
+            </div>
+            <span class="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/10 text-astro-purple border border-purple-500/20">Anti-Data-Leakage</span>
+          </div>
+          <div id="chart-splits-pie" class="h-64 w-full"></div>
+        </div>
+      </div>
+
+      <!-- Sample Galaxy Table -->
+      <div class="bg-space-800 rounded-2xl border border-space-700 overflow-hidden">
+        <div class="p-5 border-b border-space-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-sm font-semibold text-white">Tabla de Galaxias Seleccionadas</h2>
+            <p class="text-xs text-slate-400">Visualización de los primeros 100 registros con filtros</p>
+          </div>
+          <div class="flex items-center space-x-3 w-full sm:w-auto">
+            <input type="text" id="galaxy-search" oninput="filterGalaxyTable()" placeholder="Buscar por mangaID o plateifu..." class="w-full sm:w-64 bg-space-900 border border-space-600 px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500">
+            <select id="split-filter" onchange="filterGalaxyTable()" class="bg-space-900 border border-space-600 px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none">
+              <option value="all">Todos los splits</option>
+              <option value="train">Train</option>
+              <option value="validation">Validation</option>
+              <option value="test">Test</option>
+            </select>
+          </div>
+        </div>
+        <div class="overflow-x-auto max-h-96">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-space-900/80 sticky top-0 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-space-700">
+              <tr>
+                <th class="px-5 py-3">#</th>
+                <th class="px-5 py-3">plateifu</th>
+                <th class="px-5 py-3">mangaID</th>
+                <th class="px-5 py-3">Redshift (z)</th>
+                <th class="px-5 py-3">Split</th>
+              </tr>
+            </thead>
+            <tbody id="galaxy-table-body" class="divide-y divide-space-700">
+              <tr><td colspan="5" class="px-5 py-6 text-center text-slate-500">Cargando galaxias...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 2: CONTROL DEL PIPELINE & CONFIGURACIÓN COMPLETA              -->
+    <!-- ================================================================= -->
+    <section id="tab-pipeline" class="tab-content hidden space-y-6">
+      
+      <!-- Top Action Banner -->
+      <div class="bg-space-800 p-4 rounded-2xl border border-space-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-sm font-bold text-white flex items-center space-x-2">
+            <i class="fa-solid fa-sliders text-astro-cyan"></i>
+            <span>Centro de Parámetros e Hiperparámetros del Paper</span>
+          </h2>
+          <p class="text-xs text-slate-400">Todos los parámetros físicos, astronómicos y de redes neuronales editables en vivo</p>
+        </div>
+        <div class="flex items-center space-x-3 w-full sm:w-auto">
+          <button onclick="resetConfigDefaults()" class="px-3.5 py-2 bg-space-700 hover:bg-space-600 text-slate-300 hover:text-white rounded-xl text-xs font-medium transition flex items-center space-x-1.5 border border-space-600">
+            <i class="fa-solid fa-rotate-left text-xs"></i>
+            <span>Valores del Paper</span>
+          </button>
+          <button onclick="saveFullConfig()" class="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-cyan-600/20 transition flex items-center space-x-1.5">
+            <i class="fa-solid fa-floppy-disk text-xs"></i>
+            <span>Guardar Parámetros</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Parameters & Execution Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: Categorized Accordion Parameters (7 cols) -->
+        <div class="lg:col-span-7 space-y-4">
+          
+          <!-- Section 1: Preprocesamiento Espectral & Voronoi -->
+          <div class="bg-space-800 rounded-2xl border border-space-700 overflow-hidden">
+            <button type="button" onclick="toggleSection('sec-preprocessing')" class="w-full p-4 text-left flex items-center justify-between hover:bg-space-700/30 transition">
+              <span class="text-xs font-bold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-telescope text-astro-cyan"></i>
+                <span>1. Preprocesamiento Espectral (Voronoi & Filtros)</span>
+              </span>
+              <i id="sec-preprocessing-icon" class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform"></i>
+            </button>
+            <div id="sec-preprocessing" class="p-4 pt-0 border-t border-space-700/60 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block text-slate-400 mb-1">Rango Rest-frame [min, max] (Å)</label>
+                <input type="text" id="cfg-pre-rest-limits" value="[3650, 8950]" class="w-full bg-space-900 border border-emerald-500/50 rounded-lg p-2 text-emerald-400 font-mono text-xs">
+                <span class="text-[10px] text-emerald-400/80">✓ [3650, 8950] Å del paper (soluciona descarte)</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Canales Espectrales (n_wave)</label>
+                <input type="number" id="cfg-pre-n-wave" value="4544" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">Múltiplo de 64 para Autoencoder 1D</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">S/N Objetivo Voronoi (target_sn)</label>
+                <input type="number" id="cfg-pre-target-sn" value="20" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Cappellari & Copin (2003)</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">S/N Mínimo Spaxel (min_spaxel_sn)</label>
+                <input type="number" step="0.5" id="cfg-pre-min-spaxel-sn" value="2.0" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Corte antes de binning (Paper §2)</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">S/N Mínimo Baxel (min_baxel_sn)</label>
+                <input type="number" step="0.5" id="cfg-pre-min-baxel-sn" value="10.0" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Paper §2: se descartan baxels con S/N &lt; 10 (con 5 los resultados cualitativos no cambian)</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Ventana Continuo S/N y Norm (Å)</label>
+                <input type="text" id="cfg-pre-continuum-rest" value="[4050, 4150]" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">Región de normalización (Archinuk et al.)</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Máx. Hueco a Interpolar (Å)</label>
+                <input type="number" id="cfg-pre-max-gap" value="50" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Rellena líneas celestes (~22 Å)</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Mín. Píxeles Buenos (min_good_rebinned)</label>
+                <input type="number" id="cfg-pre-min-good" value="3900" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Criterio ngoodpixels ≥ 3900</span>
+              </div>
+              <div class="sm:col-span-2 flex items-center space-x-2 pt-1">
+                <input type="checkbox" id="cfg-pre-covariance" checked class="rounded bg-space-900 border-space-600 text-cyan-500 focus:ring-0">
+                <label for="cfg-pre-covariance" class="text-xs text-slate-300 cursor-pointer">
+                  Corrección de Covarianza de Ruido Law et al. 2016: <span class="text-slate-400 font-mono text-[11px]">(1.0 + 1.62·log10(n))</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 2: Selección de Muestra & Catálogo -->
+          <div class="bg-space-800 rounded-2xl border border-space-700 overflow-hidden">
+            <button type="button" onclick="toggleSection('sec-sample')" class="w-full p-4 text-left flex items-center justify-between hover:bg-space-700/30 transition">
+              <span class="text-xs font-bold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-filter text-astro-purple"></i>
+                <span>2. Selección de la Muestra & Catálogo (DRPall DR15)</span>
+              </span>
+              <i id="sec-sample-icon" class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform"></i>
+            </button>
+            <div id="sec-sample" class="p-4 pt-0 border-t border-space-700/60 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block text-slate-400 mb-1">Galaxias Objetivo (n_target)</label>
+                <input type="number" id="cfg-sample-target" value="500" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">10 (rápido), 500 (réplica), 4609 (full)</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Semilla Aleatoria (seed)</label>
+                <input type="number" id="cfg-sample-seed" value="20261002" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">Garantiza reproducibilidad exacta</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Rango de Redshift [min, max]</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <input type="number" step="0.01" id="cfg-sample-zmin" value="0.0" class="bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs" placeholder="Min z">
+                  <input type="number" step="0.01" id="cfg-sample-zmax" value="0.15" class="bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs" placeholder="Max z">
+                </div>
+                <span class="text-[10px] text-slate-500">Límites del relevamiento MaNGA</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Proporción de Splits [Train, Val, Test]</label>
+                <input type="text" id="cfg-sample-splits" value="[0.70, 0.15, 0.15]" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">Se aplican a la unidad elegida abajo</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Unidad de Partición (split_mode)</label>
+                <select id="cfg-sample-split-mode" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                  <option value="galaxy">Por galaxia (sin fuga entre train/val/test)</option>
+                  <option value="spectrum">Por espectro (como el paper original)</option>
+                </select>
+                <span class="text-[10px] text-slate-500">Se aplica al ejecutar la Etapa 2 (DESOM-1). DESOM-2 siempre divide por galaxia.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 3: Hiperparámetros DESOM-1 (Espectros) -->
+          <div class="bg-space-800 rounded-2xl border border-space-700 overflow-hidden">
+            <button type="button" onclick="toggleSection('sec-desom1')" class="w-full p-4 text-left flex items-center justify-between hover:bg-space-700/30 transition">
+              <span class="text-xs font-bold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-wave-square text-astro-gold"></i>
+                <span>3. Modelo DESOM-1 (Autoencoder 1D + SOM 15×15)</span>
+              </span>
+              <i id="sec-desom1-icon" class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform"></i>
+            </button>
+            <div id="sec-desom1" class="p-4 pt-0 border-t border-space-700/60 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block text-slate-400 mb-1">Dimensiones del Mapa SOM (map_size)</label>
+                <input type="text" id="cfg-d1-map-size" value="[15, 15]" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">225 neuronas / prototipos</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Dimensión Latente (latent)</label>
+                <input type="number" id="cfg-d1-latent" value="256" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Vector de cuello de botella z</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Iteraciones Totales</label>
+                <input type="number" id="cfg-d1-iterations" value="65000" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Paper: 65,000 pasos</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Iteraciones Enfriamiento SOM</label>
+                <input type="number" id="cfg-d1-som-iterations" value="50000" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Enfriamiento Tmax &rarr; Tmin</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Peso de Pérdida SOM (gamma)</label>
+                <input type="text" id="cfg-d1-gamma" value="0.0005" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">L = L_recon + &gamma;·L_som</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Learning Rate (lr)</label>
+                <input type="text" id="cfg-d1-lr" value="0.00005" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">Optimizador Adam</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Batch Size</label>
+                <input type="number" id="cfg-d1-batch-size" value="128" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Seguro para GPUs de 4 GB</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Temperaturas [Tmax, Tmin]</label>
+                <input type="text" id="cfg-d1-temps" value="[15.0, 0.7]" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">Ancho gaussiano de vecindad</span>
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-slate-400 mb-1">Distancia en el Mapa SOM (map_distance) — DESOM-1 y DESOM-2</label>
+                <select id="cfg-train-map-distance" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                  <option value="manhattan">Manhattan exacta |Δfila| + |Δcol| (corregida)</option>
+                  <option value="paper">Código original |a−b| // ancho + |Δcol| (réplica exacta)</option>
+                </select>
+                <span class="text-[10px] text-slate-500">Define qué nodos vecinos se actualizan. La del original aproxima el término de fila; afecta al entrenar (Etapas 3 y 4).</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 4: Hiperparámetros DESOM-2 (Galaxias) -->
+          <div class="bg-space-800 rounded-2xl border border-space-700 overflow-hidden">
+            <button type="button" onclick="toggleSection('sec-desom2')" class="w-full p-4 text-left flex items-center justify-between hover:bg-space-700/30 transition">
+              <span class="text-xs font-bold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-network-wired text-astro-pink"></i>
+                <span>4. Modelo DESOM-2 (Autoencoder 2D + SOM 10×10)</span>
+              </span>
+              <i id="sec-desom2-icon" class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform"></i>
+            </button>
+            <div id="sec-desom2" class="p-4 pt-0 border-t border-space-700/60 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block text-slate-400 mb-1">Dimensiones del Mapa SOM (map_size)</label>
+                <input type="text" id="cfg-d2-map-size" value="[10, 10]" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">100 neuronas / prototipos de galaxias</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Dimensión Latente (latent_dims)</label>
+                <input type="number" id="cfg-d2-latent" value="128" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Cuello de botella de huellas</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Iteraciones Totales</label>
+                <input type="number" id="cfg-d2-iterations" value="40000" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Paper: 40,000 pasos</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Iteraciones Enfriamiento SOM</label>
+                <input type="number" id="cfg-d2-som-iterations" value="35000" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Enfriamiento Tmax &rarr; Tmin</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Peso de Pérdida SOM (gamma)</label>
+                <input type="text" id="cfg-d2-gamma" value="0.000008" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">Paper: 8e-6</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Learning Rate (lr)</label>
+                <input type="text" id="cfg-d2-lr" value="0.0001" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+                <span class="text-[10px] text-slate-500">Optimizador Adam</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Batch Size</label>
+                <input type="number" id="cfg-d2-batch-size" value="1024" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Huellas 15×15 son muy ligeras</span>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Percentil de Saturación (clipping)</label>
+                <input type="number" step="0.1" id="cfg-d2-clipping" value="99.9" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white text-xs">
+                <span class="text-[10px] text-slate-500">Evita píxeles extremos</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 5: Almacenamiento & Rutas -->
+          <div class="bg-space-800 rounded-2xl border border-space-700 overflow-hidden">
+            <button type="button" onclick="toggleSection('sec-storage')" class="w-full p-4 text-left flex items-center justify-between hover:bg-space-700/30 transition">
+              <span class="text-xs font-bold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-hard-drive text-emerald-400"></i>
+                <span>5. Almacenamiento & Rutas</span>
+              </span>
+              <i id="sec-storage-icon" class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform"></i>
+            </button>
+            <div id="sec-storage" class="p-4 pt-0 border-t border-space-700/60 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block text-slate-400 mb-1">Backend Activo</label>
+                <select id="cfg-storage-backend" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white">
+                  <option value="drive" selected>Nube (Google Drive: /content/drive/MyDrive/...)</option>
+                  <option value="local">Local (Laptop: ./workspace_data)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Ruta Local Raíz</label>
+                <input type="text" id="cfg-storage-local" value="./workspace_data" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-slate-400 mb-1">Ruta Google Drive (Colab)</label>
+                <input type="text" id="cfg-storage-drive" value="/content/drive/MyDrive/GalaxyAE_colab" class="w-full bg-space-900 border border-space-600 rounded-lg p-2 text-white font-mono text-xs">
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right Column: Pipeline Execution & Live Log Console (5 cols) -->
+        <div class="lg:col-span-5 space-y-4">
+          <div class="bg-space-800 p-5 rounded-2xl border border-space-700 space-y-4 sticky top-20">
+            <div class="flex items-center justify-between">
+              <h2 class="text-sm font-semibold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-list-check text-astro-purple"></i>
+                <span>Lanzador de Etapas</span>
+              </h2>
+              <div class="flex items-center space-x-1.5">
+                <button onclick="openNewRunModal()" class="px-2 py-0.5 text-[11px] bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 rounded border border-emerald-500/30 transition flex items-center space-x-1" title="Nueva corrida">
+                  <i class="fa-solid fa-plus text-[9px]"></i>
+                  <span>Nueva</span>
+                </button>
+                <button onclick="openManageRunsModal()" class="px-2 py-0.5 text-[11px] bg-space-700 hover:bg-space-600 text-slate-300 rounded border border-space-600 transition flex items-center space-x-1" title="Historial de corridas">
+                  <i class="fa-solid fa-clock-rotate-left text-[9px]"></i>
+                  <span>Historial</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Active Run Status Banner -->
+            <div class="p-3 rounded-xl bg-space-900/80 border border-space-700 space-y-1.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="text-[11px] text-slate-400">Corrida Activa:</span>
+                  <span id="active-run-name-banner" class="text-xs font-bold text-astro-cyan font-mono">...</span>
+                </div>
+                <span id="active-run-stats-banner" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-astro-cyan border border-cyan-500/30">Cargando...</span>
+              </div>
+              <p id="active-run-next-step" class="text-[11px] text-slate-300 font-medium">Comprobando estado de etapas...</p>
+            </div>
+
+            <div class="space-y-3">
+              <!-- Stage 1 -->
+              <div class="flex items-center justify-between p-3 rounded-xl bg-space-900/60 border border-space-700">
+                <div>
+                  <span class="text-xs font-semibold text-white block">Etapa 1: Voronoi Binning</span>
+                  <span class="text-[10px] text-slate-400">Descarga cubos y extrae baxels</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span id="badge-stage-1" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">Pendiente</span>
+                  <button onclick="launchStage('1')" class="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-medium transition flex items-center space-x-1">
+                    <i class="fa-solid fa-play text-[9px]"></i>
+                    <span>Lanzar</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Stage 2 -->
+              <div class="flex items-center justify-between p-3 rounded-xl bg-space-900/60 border border-space-700">
+                <div>
+                  <span class="text-xs font-semibold text-white block">Etapa 2: Auditoría & Fig 1</span>
+                  <span class="text-[10px] text-slate-400">Consolida dataset sin data leakage</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span id="badge-stage-2" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">Pendiente</span>
+                  <button onclick="launchStage('2')" class="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-medium transition flex items-center space-x-1">
+                    <i class="fa-solid fa-play text-[9px]"></i>
+                    <span>Lanzar</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Stage 3 -->
+              <div class="flex items-center justify-between p-3 rounded-xl bg-space-900/60 border border-space-700">
+                <div>
+                  <span class="text-xs font-semibold text-white block">Etapa 3: DESOM-1 (Espectros)</span>
+                  <span class="text-[10px] text-slate-400">Entrena SOM 15×15 y huellas 2D</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span id="badge-stage-3" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">Pendiente</span>
+                  <button onclick="launchStage('3')" class="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-medium transition flex items-center space-x-1">
+                    <i class="fa-solid fa-play text-[9px]"></i>
+                    <span>Lanzar</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Stage 4 -->
+              <div class="flex items-center justify-between p-3 rounded-xl bg-space-900/60 border border-space-700">
+                <div>
+                  <span class="text-xs font-semibold text-white block">Etapa 4: DESOM-2 (Galaxias)</span>
+                  <span class="text-[10px] text-slate-400">Mapeo diversidad 10×10 (Fig 10)</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span id="badge-stage-4" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">Pendiente</span>
+                  <button onclick="launchStage('4')" class="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-medium transition flex items-center space-x-1">
+                    <i class="fa-solid fa-play text-[9px]"></i>
+                    <span>Lanzar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Execution Console Log Window -->
+            <div class="mt-4 bg-space-900 p-4 rounded-xl border border-space-700">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-slate-400 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-terminal text-emerald-400"></i>
+                  <span>Consola de Ejecución en Vivo</span>
+                </span>
+                <span id="process-indicator" class="text-[11px] text-slate-500">Inactivo</span>
+              </div>
+              <pre id="console-logs" class="h-52 overflow-y-auto text-xs font-mono text-emerald-400/90 whitespace-pre-wrap select-all">Listo para ejecutar etapas...</pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 3: DIAGNÓSTICO DE PREPROCESAMIENTO                            -->
+    <!-- ================================================================= -->
+    <section id="tab-preprocessing" class="tab-content hidden space-y-6">
+      
+      <div class="bg-space-800 p-6 rounded-2xl border border-space-700 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white">Auditoría del Problema del 50% de Descarte</h2>
+            <p class="text-xs text-slate-400">Verifica la tasa de retención de galaxias tras aplicar la corrección de longitud de onda [3650, 8950] Å</p>
+          </div>
+          <span class="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-semibold">
+            ✓ Rango Corregido
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+          <div class="bg-space-900/60 p-4 rounded-xl border border-space-700">
+            <span class="text-xs text-slate-400 block">Tasa de Retención de Galaxias</span>
+            <span id="diag-retention-rate" class="text-2xl font-bold text-emerald-400">Esperando ejecución...</span>
+            <span class="text-[10px] text-slate-500 block mt-1">Objetivo del paper: &gt; 95%</span>
+          </div>
+
+          <div class="bg-space-900/60 p-4 rounded-xl border border-space-700">
+            <span class="text-xs text-slate-400 block">Baxels Aceptados</span>
+            <span id="diag-accepted-baxels" class="text-2xl font-bold text-cyan-400">0</span>
+            <span class="text-[10px] text-slate-500 block mt-1">Espectros válidos normalizados</span>
+          </div>
+
+          <div class="bg-space-900/60 p-4 rounded-xl border border-space-700">
+            <span class="text-xs text-slate-400 block">Rango Activo en Reposo</span>
+            <span class="text-2xl font-bold text-purple-400">3650 – 8950 Å</span>
+            <span class="text-[10px] text-slate-500 block mt-1">4544 canales espectrales</span>
+          </div>
+        </div>
+
+        <div class="p-4 rounded-xl bg-space-900/40 border border-space-700/60 text-xs text-slate-300 space-y-2">
+          <h3 class="font-semibold text-slate-200">¿Por qué fallaba anteriormente?</h3>
+          <p class="text-slate-400">
+            Al tener configurado el rango en [3700, 10000] Å, para galaxias con $z &gt; 0.03$, la longitud observada superaba los 10,300 Å (límite del instrumento MaNGA). Esto dejaba sin datos el extremo rojo del espectro, disparando el descarte por huecos sin rellenar en todos los baxels de la galaxia. Con el nuevo rango de 8950 Å en reposo, el 100% de los datos queda cubierto para todo el catálogo.
+          </p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 4: DESOM-1 (ESPECTROS 15x15)                                  -->
+    <!-- ================================================================= -->
+    <section id="tab-desom1" class="tab-content hidden space-y-6">
+      
+      <!-- Interactive Spectrum Viewer (Fig 1 Replicant) -->
+      <div class="bg-space-800 p-6 rounded-2xl border border-space-700 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-white">Figura 1 Réplica: Espectros Normalizados y Líneas de Emisión</h2>
+            <p class="text-xs text-slate-400">Muestra interactiva de espectros de baxels normalizados por la región [4050, 4150] Å</p>
+          </div>
+          <button onclick="loadSampleSpectra()" class="px-3 py-1 bg-space-700 hover:bg-space-600 text-xs text-slate-200 rounded-lg transition">
+            <i class="fa-solid fa-arrows-rotate mr-1"></i> Cargar espectros
+          </button>
+        </div>
+
+        <div id="chart-spectra-viewer" class="h-80 w-full"></div>
+      </div>
+
+      <!-- Prototypes & Fingerprints Section (Fig 4 and Fig 5) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Figure 4 Card: 15x15 Prototypes -->
+        <div class="bg-space-800 p-6 rounded-2xl border border-space-700 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-braille text-astro-cyan"></i>
+                <span>Figura 3 del paper: Malla de Prototipos 15×15 (DESOM-1)</span>
+              </h2>
+              <p class="text-xs text-slate-400">225 espectros reconstruidos en el plano latente</p>
+            </div>
+            <button onclick="loadDESOM1Figures()" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-space-700 transition" title="Refrescar">
+              <i class="fa-solid fa-arrows-rotate text-xs"></i>
+            </button>
+          </div>
+          <div id="fig4-preview-container">
+            <p class="text-xs text-slate-500 text-center py-10">Cargando visualización de prototipos...</p>
+          </div>
+        </div>
+
+        <!-- Figure 5 Card: 2D Galaxy Fingerprints -->
+        <div class="bg-space-800 p-6 rounded-2xl border border-space-700 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-fingerprint text-astro-pink"></i>
+                <span>Muestras de Huellas 2D normalizadas (entrada de DESOM-2)</span>
+              </h2>
+              <p class="text-xs text-slate-400">Distribución de densidad de spaxels proyectados</p>
+            </div>
+            <button onclick="loadDESOM1Figures()" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-space-700 transition" title="Refrescar">
+              <i class="fa-solid fa-arrows-rotate text-xs"></i>
+            </button>
+          </div>
+          <div id="fig5-preview-container">
+            <p class="text-xs text-slate-500 text-center py-10">Cargando visualización de huellas...</p>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 5: DESOM-2 (GALAXIAS 10x10)                                   -->
+    <!-- ================================================================= -->
+    <section id="tab-desom2" class="tab-content hidden space-y-6">
+      
+      <div class="bg-space-800 p-6 rounded-2xl border border-space-700 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-white flex items-center space-x-2">
+              <i class="fa-solid fa-circle-nodes text-astro-purple"></i>
+              <span>Figura 10: Malla de Diversidad de Galaxias 10×10 (DESOM-2)</span>
+            </h2>
+            <p class="text-xs text-slate-400">100 neuronas agrupando morfologías y perfiles espectrales de toda la muestra</p>
+          </div>
+          <button onclick="loadDESOM2Figures()" class="px-3 py-1 bg-space-700 hover:bg-space-600 text-xs text-slate-200 rounded-lg transition">
+            <i class="fa-solid fa-arrows-rotate mr-1"></i> Refrescar mapa
+          </button>
+        </div>
+
+        <div id="fig10-preview-container">
+          <p class="text-xs text-slate-500 text-center py-12">Cargando mapa de diversidad de galaxias...</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 6: FIGURAS & ARCHIVOS GENERADOS                               -->
+    <!-- ================================================================= -->
+    <section id="tab-gallery" class="tab-content hidden space-y-6">
+      
+      <div class="bg-space-800 p-6 rounded-2xl border border-space-700 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-white">Galería de Figuras Replicadas del Paper</h2>
+            <p class="text-xs text-slate-400">Figuras exportadas en alta resolución (.pdf y .png)</p>
+          </div>
+          <button onclick="loadFiguresGallery()" class="px-3 py-1 bg-space-700 hover:bg-space-600 text-xs text-slate-200 rounded-lg transition">
+            <i class="fa-solid fa-arrows-rotate mr-1"></i> Refrescar figuras
+          </button>
+        </div>
+
+        <div id="figures-gallery-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+          <p class="text-xs text-slate-500 col-span-3 text-center py-8">Cargando galería de figuras...</p>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: GESTOR DE CORRIDAS & NUEVA SERIE                               -->
+  <!-- ===================================================================== -->
+  <div id="modal-runs" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden p-4">
+    <div class="bg-space-800 border border-space-600 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      
+      <!-- Modal Header -->
+      <div class="p-5 border-b border-space-700 flex items-center justify-between bg-space-900/70">
+        <div class="flex items-center space-x-2.5">
+          <div class="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-astro-cyan">
+            <i class="fa-solid fa-flask-vial"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Gestor de Experimentos y Corridas</h3>
+            <p class="text-xs text-slate-400">Crea una nueva corrida o continúa con una guardada previamente</p>
+          </div>
+        </div>
+        <button onclick="closeExperimentsModal()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-space-700 transition">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- Modal Tabs -->
+      <div class="flex border-b border-space-700 px-6 pt-3 bg-space-850 space-x-4">
+        <button id="modal-tab-create-btn" onclick="switchModalTab('create')" class="pb-3 text-xs font-semibold text-white border-b-2 border-cyan-500 flex items-center space-x-1.5 transition">
+          <i class="fa-solid fa-plus-circle text-astro-cyan"></i>
+          <span>Crear Nueva Corrida</span>
+        </button>
+        <button id="modal-tab-history-btn" onclick="switchModalTab('history')" class="pb-3 text-xs font-semibold text-slate-400 hover:text-white border-b-2 border-transparent flex items-center space-x-1.5 transition">
+          <i class="fa-solid fa-folder-open text-astro-purple"></i>
+          <span>Corridas Guardadas (<span id="modal-runs-count">0</span>)</span>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto space-y-5 flex-1">
+        
+        <!-- SECTION: Crear Nueva Corrida -->
+        <div id="modal-sec-create" class="space-y-4">
+          <div class="bg-space-900/80 p-4 rounded-xl border border-space-700 space-y-3">
+            <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider">Parámetros Iniciales</h4>
+            
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Nombre / Identificador de la Corrida (Run ID)</label>
+              <input type="text" id="new-run-id-input" placeholder="ej. run_piloto_10g, run_500g, run_paper_4609g" class="w-full bg-space-950 border border-space-600 rounded-lg p-2.5 text-white font-mono text-xs focus:border-cyan-500 focus:outline-none">
+              <span class="text-[10px] text-slate-500">Solo letras, números, guiones y guiones bajos (sin espacios).</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Muestra Objetivo de Galaxias</label>
+                <input type="number" id="new-run-sample-input" value="10" min="1" max="4609" class="w-full bg-space-950 border border-space-600 rounded-lg p-2.5 text-white text-xs focus:border-cyan-500 focus:outline-none">
+                <span class="text-[10px] text-slate-500">10 para pruebas rápidas, 500 validación, 4609 paper.</span>
+              </div>
+              <div class="flex flex-col justify-center pt-2 sm:pt-0">
+                <label class="block text-xs text-slate-400 mb-1">Heredar Parámetros</label>
+                <div class="space-y-1.5">
+                  <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+                    <input type="radio" name="new-run-clone-opt" value="current" checked class="text-cyan-500 focus:ring-0">
+                    <span>Copiar parámetros actuales</span>
+                  </label>
+                  <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+                    <input type="radio" name="new-run-clone-opt" value="paper" class="text-cyan-500 focus:ring-0">
+                    <span>Valores estándar del Paper</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-end space-x-3 pt-2">
+            <button onclick="closeExperimentsModal()" class="px-4 py-2 bg-space-700 hover:bg-space-600 text-xs font-medium text-slate-300 rounded-xl transition">
+              Cancelar
+            </button>
+            <button onclick="submitCreateRun()" class="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center space-x-1.5">
+              <i class="fa-solid fa-rocket text-xs"></i>
+              <span>Crear y Activar Corrida</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- SECTION: Corridas Guardadas -->
+        <div id="modal-sec-history" class="space-y-3 hidden">
+          <p class="text-xs text-slate-400">Selecciona cualquier corrida para continuar donde la dejaste o inspeccionar sus espectros y figuras generadas:</p>
+          
+          <div id="modal-runs-list" class="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+            <p class="text-xs text-slate-500 text-center py-6">Cargando corridas...</p>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Dashboard JavaScript Logic -->
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

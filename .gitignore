@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches and tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# macOS metadata
+.DS_Store
+._*
+
+# Environment and virtualenvs
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Large scientific data and experiment runs (MaNGA cubes, raw fits, intermediate npz)
+workspace_data/
+*.fits
+*.fits.gz
+*.tar.gz
+
+# Local temporary or log files
+*.log
+*.tmp*
