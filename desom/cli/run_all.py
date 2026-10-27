@@ -29,7 +29,7 @@ def main() -> None:
     args = parser.parse_args()
 
     print("\n" + "=" * 65)
-    print("      🌌 DESOM: DEEP EMBEDDED SELF-ORGANIZING MAPS 🌌")
+    print("      DESOM: DEEP EMBEDDED SELF-ORGANIZING MAPS")
     print("      Mapping Galaxy Spectra & Spatially Resolved Diversity")
     print("=" * 65)
     print(f" Storage backend: {args.storage}")
@@ -83,7 +83,7 @@ def main() -> None:
             stage4_main()
 
         print("\n" + "=" * 65)
-        print(" 🎉 Full pipeline execution finished successfully! 🎉")
+        print(" Full pipeline execution finished successfully!")
         print(" Check your figures and models in the experiment directory.")
         print("=" * 65 + "\n")
 

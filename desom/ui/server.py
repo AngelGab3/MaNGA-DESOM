@@ -229,7 +229,7 @@ def start_dashboard(
     active_sample = api.cfg.raw["n_target"]
 
     print("\n" + "=" * 65)
-    print("      🌌 DESOM DASHBOARD & GALAXY VISUALIZER 🌌")
+    print("      DESOM DASHBOARD & GALAXY VISUALIZER")
     print("=" * 65)
     print(f" URL local:        {url}")
     print(f" Almacenamiento:   {active_storage} ({api.cfg.run_dir})")

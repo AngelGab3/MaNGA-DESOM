@@ -1,10 +1,10 @@
-# 🌌 DESOM: Deep Embedded Self-Organizing Maps (MaNGA IFU)
+# DESOM: Deep Embedded Self-Organizing Maps (MaNGA IFU)
 
 Pipeline modularizado y optimizado para la replicación fiel de los resultados y figuras del artículo científico (*Teimoorinia, Archinuk, Woo et al., The Astronomical Journal* / *arXiv:2112.03425*).
 
 ---
 
-## 🚀 Características Principales
+## Características Principales
 
 1. **Fidelidad Estricta al Paper y Mejoras de Ingeniería:**
    * Rango de longitud de onda en reposo fijado a **`[3650, 8950] Å`** en $4544$ bins logarítmicos.
@@ -33,7 +33,7 @@ Pipeline modularizado y optimizado para la replicación fiel de los resultados y
 
 ---
 
-## 📦 Estructura del Código
+## Estructura del Código
 
 ```text
 DESOM/
@@ -79,7 +79,7 @@ DESOM/
 
 ---
 
-## 🖥️ Interfaz Gráfica Interactiva (Dashboard)
+## Interfaz Gráfica Interactiva (Dashboard)
 
 El proyecto incluye un dashboard web interactivo con tema astronómico (*Dark Mode*), sin dependencias externas pesadas:
 
@@ -95,7 +95,7 @@ Abre tu navegador en `http://localhost:8050` para acceder a:
 
 ---
 
-## 💻 Instrucciones de Uso por Consola
+## Instrucciones de Uso por Consola
 
 ### 1. Instalación de Dependencias
 ```bash
