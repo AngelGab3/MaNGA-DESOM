@@ -48,6 +48,11 @@ class BaseDESOM:
         self.bmu_model = Model(inputs=self.autoencoder.input, outputs=som_out, name="bmu_model")
 
         self.set_map_distance(self.map_distance)
+        for m in (self.encoder, self.decoder, self.bmu_model):
+            try:
+                m.compile(jit_compile=False)
+            except Exception:
+                pass
         self.compile()
 
     def set_map_distance(self, mode: str) -> None:
@@ -61,6 +66,7 @@ class BaseDESOM:
             loss=["mse", som_loss],
             loss_weights=[1.0, self.gamma],
             optimizer=Adam(learning_rate=self.lr),
+            jit_compile=False,
         )
 
     # ------------------------------------------------------------------ SOM helpers

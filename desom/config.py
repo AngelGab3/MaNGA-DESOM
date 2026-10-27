@@ -51,6 +51,24 @@ def setup_hardware(
                             print(f"[Hardware] Warning setting memory growth on {gpu.name}: {e}")
                 info["memory_growth"] = True
 
+            # Configure XLA / JIT settings to prevent ptxas compilation failures on missing nvcc
+            try:
+                tf.config.optimizer.set_jit(False)
+            except Exception:
+                pass
+
+            # Auto-locate ptxas and libdevice if nvidia-cuda-nvcc is installed in site-packages
+            try:
+                import site
+                for sp in site.getsitepackages():
+                    nvcc_dir = Path(sp) / "nvidia" / "cuda_nvcc"
+                    if (nvcc_dir / "bin" / "ptxas").exists():
+                        os.environ["PATH"] = str(nvcc_dir / "bin") + ":" + os.environ.get("PATH", "")
+                    if (nvcc_dir / "nvvm" / "libdevice" / "libdevice.10.bc").exists():
+                        os.environ["XLA_FLAGS"] = f"--xla_gpu_cuda_data_dir={nvcc_dir} " + os.environ.get("XLA_FLAGS", "")
+            except Exception:
+                pass
+
             if mixed_precision:
                 try:
                     from tensorflow.keras import mixed_precision as mp
