@@ -23,7 +23,6 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = get_config(storage_backend=args.storage, n_target=args.sample, run_id=args.run_id)
-    setup_hardware(verbose=True)
     state = StateManager(cfg.run_dir / "pipeline_state.json")
 
     # Resolve parallel workers
@@ -54,6 +53,7 @@ def main() -> None:
     total_candidates = 0
 
     if n_workers > 1:
+        import multiprocessing
         from concurrent.futures import ProcessPoolExecutor, as_completed
         from ..data.processor import _worker_process_galaxy_task
 
@@ -63,21 +63,26 @@ def main() -> None:
         ]
 
         print(f"[Stage 1] Procesando {len(tasks)} galaxias en paralelo ({n_workers} procesos CPU)...")
-        with ProcessPoolExecutor(max_workers=n_workers) as executor:
-            future_to_plate = {executor.submit(_worker_process_galaxy_task, t): t[1] for t in tasks}
-            pbar = tqdm(total=len(tasks), desc=f"Stage 1 ({n_workers} CPUs)")
+        ctx = multiprocessing.get_context("spawn")
+        try:
+            with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as executor:
+                future_to_plate = {executor.submit(_worker_process_galaxy_task, t): t[1] for t in tasks}
+                pbar = tqdm(total=len(tasks), desc=f"Stage 1 ({n_workers} CPUs)")
 
-            for future in as_completed(future_to_plate):
-                plateifu, res, err = future.result()
-                if err:
-                    print(f"\n[Warning] Error procesando galaxia {plateifu}: {err}")
-                elif res and res.get("n_candidates_accepted", 0) > 0:
-                    success_count += 1
-                    total_candidates += res["n_candidates_accepted"]
-                pbar.update(1)
-            pbar.close()
+                for future in as_completed(future_to_plate):
+                    plateifu, res, err = future.result()
+                    if err:
+                        print(f"\n[Warning] Error procesando galaxia {plateifu}: {err}")
+                    elif res and res.get("n_candidates_accepted", 0) > 0:
+                        success_count += 1
+                        total_candidates += res["n_candidates_accepted"]
+                    pbar.update(1)
+                pbar.close()
+        except Exception as pool_err:
+            print(f"\n[Multiproceso] Interrupción en pool ({pool_err}). Continuando secuencialmente...")
+            n_workers = 1
 
-    else:
+    if n_workers <= 1 and success_count == 0:
         for idx, row in tqdm(selection.iterrows(), total=len(selection), desc="Stage 1 Processing"):
             plateifu = str(row["plateifu"])
             manga_id = str(row["mangaID"])
