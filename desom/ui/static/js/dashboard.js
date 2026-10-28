@@ -74,8 +74,14 @@ async function initHardwareInfo() {
     const res = await fetch('/api/hardware');
     const data = await res.json();
     const badge = document.getElementById('hw-text');
+    const badgeContainer = document.getElementById('hw-badge');
     if (data.backend === 'gpu') {
       badge.textContent = `GPU: ${data.devices[0] || 'NVIDIA'} (Mem Growth: Activo)`;
+    } else if (data.backend === 'cpu_fallback') {
+      badge.innerHTML = `<span class="text-sky-300 font-semibold">${data.gpu_name || 'NVIDIA RTX'}</span> <span class="text-[10px] text-amber-400 font-medium">(sm_${data.compute_capability?.replace('.', '') || '120'} → CPU 16 hilos)</span>`;
+      if (badgeContainer) {
+        badgeContainer.title = data.note || 'Tarjeta detectada. Modo CPU activo por compatibilidad de kernels PTX en TensorFlow.';
+      }
     } else if (data.backend === 'apple_silicon') {
       badge.textContent = `Apple Silicon (Metal MPS)`;
     } else {

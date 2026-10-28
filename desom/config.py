@@ -47,15 +47,24 @@ def setup_hardware(
             # E.g. RTX 50-series (sm_120, CC >= 12.0) requires sm_120 PTX which causes CUDA_ERROR_INVALID_PTX on stock TF
             try:
                 details = tf.config.experimental.get_device_details(gpus[0])
+                dev_name = details.get("device_name", "NVIDIA GPU")
                 cc = details.get("compute_capability", (0, 0))
+                info["gpu_detected"] = True
+                info["gpu_name"] = dev_name
+                info["compute_capability"] = f"{cc[0]}.{cc[1]}"
+
                 if cc >= (12, 0):
+                    info["backend"] = "cpu_fallback"
+                    info["devices"] = [dev_name]
+                    info["note"] = (
+                        f"Detectada {dev_name} (CC {cc[0]}.{cc[1]} Blackwell). "
+                        f"El binario actual de TensorFlow no incluye kernels sm_120 precompilados; "
+                        f"modo seguro CPU multinúcleo activo."
+                    )
                     if verbose:
-                        print(
-                            f"[Hardware] GPU {details.get('device_name', '')} has compute capability {cc[0]}.{cc[1]} "
-                            f"(sm_120+), which is not yet supported by standard TensorFlow PTX binaries. Falling back to multi-core CPU."
-                        )
+                        print(f"[Hardware] {info['note']}")
                     tf.config.set_visible_devices([], "GPU")
-                    gpus = []
+                    return info
             except Exception:
                 pass
 
