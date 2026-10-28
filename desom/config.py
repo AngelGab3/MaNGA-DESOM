@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 import os
 import platform
+
+os.environ.setdefault("KERAS_BACKEND", "tensorflow")
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -39,6 +42,23 @@ def setup_hardware(
 
         # 1. Check physical GPUs (NVIDIA / ROCm)
         gpus = tf.config.list_physical_devices("GPU")
+        if gpus:
+            # Check if GPU compute capability is supported by current TensorFlow
+            # E.g. RTX 50-series (sm_120, CC >= 12.0) requires sm_120 PTX which causes CUDA_ERROR_INVALID_PTX on stock TF
+            try:
+                details = tf.config.experimental.get_device_details(gpus[0])
+                cc = details.get("compute_capability", (0, 0))
+                if cc >= (12, 0):
+                    if verbose:
+                        print(
+                            f"[Hardware] GPU {details.get('device_name', '')} has compute capability {cc[0]}.{cc[1]} "
+                            f"(sm_120+), which is not yet supported by standard TensorFlow PTX binaries. Falling back to multi-core CPU."
+                        )
+                    tf.config.set_visible_devices([], "GPU")
+                    gpus = []
+            except Exception:
+                pass
+
         if gpus:
             info["backend"] = "gpu"
             info["devices"] = [gpu.name for gpu in gpus]

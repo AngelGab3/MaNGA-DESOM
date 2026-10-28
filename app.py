@@ -10,6 +10,8 @@ import argparse
 import os
 import sys
 
+os.environ.setdefault("KERAS_BACKEND", "tensorflow")
+
 from desom.ui.server import start_dashboard
 
 

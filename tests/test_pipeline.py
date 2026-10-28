@@ -10,10 +10,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+os.environ.setdefault("KERAS_BACKEND", "tensorflow")
+
+from desom.config import DEFAULT_CONFIG, setup_hardware  # noqa: E402
+setup_hardware(verbose=False)
 
 from desom.analysis.fp_normalize import normalize_fingerprints  # noqa: E402
 from desom.analysis.metrics import original_space_errors, topographic_error  # noqa: E402
-from desom.config import DEFAULT_CONFIG  # noqa: E402
 from desom.data.consolidate import flux_outlier_masks, make_split_indices  # noqa: E402
 from desom.models.som_layer import compute_map_distances, grid_distance_matrix, neighborhood_function  # noqa: E402
 
