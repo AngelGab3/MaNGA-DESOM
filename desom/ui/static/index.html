@@ -648,7 +648,12 @@
                   <i class="fa-solid fa-terminal text-emerald-400"></i>
                   <span>Consola de Ejecución en Vivo</span>
                 </span>
-                <span id="process-indicator" class="text-[11px] text-slate-500">Inactivo</span>
+                <div class="flex items-center space-x-3">
+                  <span id="process-indicator" class="text-[11px] text-slate-500">Inactivo</span>
+                  <button id="btn-stop-pipeline" onclick="stopPipelineStage()" class="hidden px-2.5 py-1 text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded transition flex items-center shadow-sm">
+                    <i class="fa-solid fa-circle-stop mr-1.5 text-xs"></i> Detener Etapa
+                  </button>
+                </div>
               </div>
               <pre id="console-logs" class="h-52 overflow-y-auto text-xs font-mono text-emerald-400/90 whitespace-pre-wrap select-all">Listo para ejecutar etapas...</pre>
             </div>

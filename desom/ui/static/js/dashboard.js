@@ -569,21 +569,44 @@ async function launchStage(stageNum) {
 
     if (result.status === 'started') {
       consoleBox.textContent += `Proceso lanzado (PID: ${result.pid})\nComando: ${result.cmd}\n\n`;
+      document.getElementById('btn-stop-pipeline')?.classList.remove('hidden');
       startLogPolling(stageNum);
     } else {
       consoleBox.textContent += `Error: ${result.message}\n`;
       indicator.textContent = 'Error';
       indicator.className = 'text-[11px] text-rose-400 font-semibold';
+      document.getElementById('btn-stop-pipeline')?.classList.add('hidden');
     }
   } catch (e) {
     consoleBox.textContent += `Fallo de conexión al lanzar etapa: ${e}\n`;
     indicator.textContent = 'Fallo';
     indicator.className = 'text-[11px] text-rose-400 font-semibold';
+    document.getElementById('btn-stop-pipeline')?.classList.add('hidden');
+  }
+}
+
+async function stopPipelineStage() {
+  const btn = document.getElementById('btn-stop-pipeline');
+  const indicator = document.getElementById('process-indicator');
+  const consoleBox = document.getElementById('console-logs');
+  if (btn) btn.disabled = true;
+  indicator.textContent = 'Deteniendo...';
+  indicator.className = 'text-[11px] text-amber-400 font-semibold';
+  try {
+    const res = await fetch('/api/pipeline/stop', { method: 'POST' });
+    const data = await res.json();
+    consoleBox.textContent += `\n[UI] ${data.message || 'Señal de detención enviada.'}\n`;
+    consoleBox.scrollTop = consoleBox.scrollHeight;
+  } catch (e) {
+    console.error('Error al detener etapa:', e);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
 function startLogPolling(stageNum) {
   if (processPollInterval) clearInterval(processPollInterval);
+  document.getElementById('btn-stop-pipeline')?.classList.remove('hidden');
 
   processPollInterval = setInterval(async () => {
     try {
@@ -601,6 +624,7 @@ function startLogPolling(stageNum) {
       if (!st.is_running) {
         clearInterval(processPollInterval);
         processPollInterval = null;
+        document.getElementById('btn-stop-pipeline')?.classList.add('hidden');
         const indicator = document.getElementById('process-indicator');
         indicator.textContent = st.exit_code === 0 ? '✓ Terminado con éxito' : `Finalizado (código ${st.exit_code})`;
         indicator.className = st.exit_code === 0 ? 'text-[11px] text-emerald-400 font-semibold' : 'text-[11px] text-rose-400 font-semibold';

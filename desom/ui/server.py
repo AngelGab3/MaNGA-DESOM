@@ -205,6 +205,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(res)
                 return
 
+            if path == "/api/pipeline/stop":
+                res = self.api.stop_pipeline_stage()
+                self.send_json(res)
+                return
+
             self.send_json({"status": "error", "message": f"Ruta POST no encontrada: {path}"}, status=404)
         except Exception as e:
             self.send_json({"status": "error", "message": str(e)}, status=500)

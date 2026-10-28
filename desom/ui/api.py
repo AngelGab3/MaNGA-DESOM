@@ -479,6 +479,7 @@ class DashboardAPI:
                 text=True,
                 cwd=str(Path.cwd()),
                 env=env,
+                start_new_session=True,
             )
 
             return {
@@ -488,6 +489,34 @@ class DashboardAPI:
                 "cmd": " ".join(cmd),
                 "log_file": str(log_file),
             }
+
+    def stop_pipeline_stage(self) -> Dict[str, Any]:
+        """Terminates currently running pipeline process and all its subprocesses."""
+        import signal
+        with self.process_lock:
+            if self.running_process is None or self.running_process.poll() is not None:
+                return {"status": "noop", "message": "No hay ningún proceso activo para detener."}
+
+            pid = self.running_process.pid
+            try:
+                pgid = os.getpgid(pid)
+                os.killpg(pgid, signal.SIGTERM)
+            except Exception:
+                try:
+                    self.running_process.terminate()
+                except Exception:
+                    pass
+
+            try:
+                self.running_process.wait(timeout=3)
+            except Exception:
+                try:
+                    pgid = os.getpgid(pid)
+                    os.killpg(pgid, signal.SIGKILL)
+                except Exception:
+                    self.running_process.kill()
+
+            return {"status": "stopped", "pid": pid, "message": f"Proceso {pid} detenido con éxito."}
 
     def get_process_status(self) -> Dict[str, Any]:
         """Checks if a background pipeline run is still active."""
