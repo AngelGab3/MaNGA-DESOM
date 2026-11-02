@@ -119,6 +119,12 @@ class StateManager:
 
     def update_stage(self, stage_name: str, status: str, **kwargs: Any) -> None:
         """Updates status of a pipeline stage."""
+        # Re-read the file so edits made by other processes (or by hand) are not overwritten
+        # with a stale in-memory copy.
+        on_disk = load_json(self.state_file, default={})
+        if on_disk.get("stages"):
+            self.state = on_disk
+        self._track_running(stage_name, status)
         if stage_name not in self.state["stages"]:
             self.state["stages"][stage_name] = {}
         self.state["stages"][stage_name].update({
@@ -128,6 +134,32 @@ class StateManager:
         })
         self.state["updated_at"] = now_utc_iso()
         self.save()
+
+    def _track_running(self, stage_name: str, status: str) -> None:
+        """
+        Remembers which stages are 'running' in this process; if the process dies with an
+        uncaught exception, those stages are marked 'failed' instead of staying 'running' forever.
+        """
+        if not hasattr(self, "_running_stages"):
+            self._running_stages = set()
+        if status == "running":
+            self._running_stages.add(stage_name)
+            if not getattr(self, "_hook_installed", False):
+                import sys
+                previous_hook = sys.excepthook
+
+                def _hook(exc_type, exc, tb):
+                    for name in list(self._running_stages):
+                        try:
+                            self.update_stage(name, "failed", error=f"{exc_type.__name__}: {exc}")
+                        except Exception:
+                            pass
+                    previous_hook(exc_type, exc, tb)
+
+                sys.excepthook = _hook
+                self._hook_installed = True
+        else:
+            self._running_stages.discard(stage_name)
 
     def is_complete(self, stage_name: str) -> bool:
         """Checks if a stage is already marked as complete."""

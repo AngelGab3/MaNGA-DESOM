@@ -17,7 +17,9 @@ Additions with respect to the original code (kept from this project):
 from __future__ import annotations
 
 import csv
+import gc
 import json
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -34,6 +36,25 @@ LOG_FIELDS: List[str] = [
     "latent_quantization_err", "latent_topographic_err",
     "quantization_err", "topographic_err",
 ]
+
+
+def _is_cuda_oom(exc: BaseException) -> bool:
+    """True if the exception is a CUDA out-of-memory error (torch or Keras-wrapped)."""
+    if type(exc).__name__ == "OutOfMemoryError":
+        return True
+    return "CUDA out of memory" in str(exc)
+
+
+def _free_cuda_memory(collect: bool = True) -> None:
+    """Releases cached CUDA blocks (and optionally Python garbage) back to the driver."""
+    if collect:
+        gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
 
 
 def parse_loss(loss_val: Any) -> Tuple[float, float, float]:
@@ -98,6 +119,8 @@ def train_desom_model(
     Tmax, Tmin = float(section["Tmax"]), float(section["Tmin"])
     ckpt_interval = int(section.get("checkpoint_interval", 1000))
     log_interval = int(section.get("log_interval", 100))
+    cache_clear_interval = max(1, int(section.get("cache_clear_interval", 25)))
+    max_oom_retries = int(section.get("max_oom_retries", 3))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     final_weights = model._resolve_weights_path(out_dir / final_name)
@@ -132,7 +155,7 @@ def train_desom_model(
     curr_idx = 0
 
     val_source = X_val if (X_val is not None and len(X_val) > 0) else X_train
-    val_sample = val_source[: min(1024, len(val_source))]
+    val_sample = val_source[: min(batch_size, len(val_source))]
 
     print(f"[{desc}] Training {start_iter}->{total_iters} iterations | batch={batch_size} | "
           f"samples={n_samples:,} | map distance='{model.map_distance}'")
@@ -148,10 +171,27 @@ def train_desom_model(
 
         # 2. temperature + neighbourhood weights (one compiled graph call)
         T = get_temperature(ite, som_iters, Tmax=Tmax, Tmin=Tmin)
-        d_batch, w_batch = model.bmu_weights(X_batch, T)
 
-        # 3. gradient step
-        loss = model.model.train_on_batch(X_batch, [X_batch, w_batch])
+        # 3. gradient step. A CUDA OOM happens before the weights are updated, so the step can be
+        #    safely repeated with the same batch after releasing cached memory.
+        loss = None
+        for attempt in range(max_oom_retries + 1):
+            try:
+                d_batch, w_batch = model.bmu_weights(X_batch, T)
+                loss = model.model.train_on_batch(X_batch, [X_batch, w_batch])
+                break
+            except Exception as exc:
+                if not _is_cuda_oom(exc) or attempt == max_oom_retries:
+                    raise
+                print(f"\n[{desc}] CUDA OOM at iteration {ite + 1} (attempt {attempt + 1}/"
+                      f"{max_oom_retries}); freeing cache and retrying the same step...")
+                _free_cuda_memory()
+                time.sleep(1.0)
+
+        # Periodically release Python garbage (tensors kept alive by reference cycles) and then
+        # return cached blocks to the driver, so the peak stays well below the GPU limit.
+        if (ite + 1) % cache_clear_interval == 0:
+            _free_cuda_memory(collect=True)
 
         is_ckpt = (ite + 1) % ckpt_interval == 0 or ite == total_iters - 1
         is_log = (ite + 1) % log_interval == 0 or is_ckpt

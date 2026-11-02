@@ -37,6 +37,23 @@ def setup_hardware(
         "mixed_precision": False,
     }
 
+    # 1. First check if PyTorch with CUDA is available (enables RTX 50-series Blackwell / sm_120 GPU acceleration)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            dev_name = torch.cuda.get_device_name(0)
+            info["backend"] = "gpu"
+            info["devices"] = [dev_name]
+            info["gpu_detected"] = True
+            info["gpu_name"] = dev_name
+            info["engine"] = f"PyTorch CUDA {torch.version.cuda}"
+            os.environ["KERAS_BACKEND"] = "torch"
+            if verbose:
+                print(f"[Hardware] GPU acelerada activa: {dev_name} ({info['engine']})")
+            return info
+    except ImportError:
+        pass
+
     try:
         import tensorflow as tf
 

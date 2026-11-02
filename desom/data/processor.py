@@ -446,15 +446,19 @@ def process_single_galaxy(
 
 
 def _worker_process_galaxy_task(
-    args: Tuple[Dict[str, Any], str, str, float, bool]
+    args: Tuple[Any, ...]
 ) -> Tuple[str, Optional[Dict[str, Any]], Optional[str]]:
     """
     Worker task for concurrent.futures multiprocessing.
+    Task tuple: (cfg_raw, plateifu, manga_id, z, force_recompute[, run_id])
     Returns: (plateifu, summary_dict_or_None, error_str_or_None)
     """
-    cfg_raw, plateifu, manga_id, z, force_recompute = args
+    cfg_raw, plateifu, manga_id, z, force_recompute = args[:5]
+    run_id = args[5] if len(args) > 5 else None
     from ..config import Config
-    cfg = Config(config_dict=cfg_raw)
+    # run_id must be forwarded, otherwise workers fall back to "run_<n>g" and write
+    # their products to a different experiment folder than the main process.
+    cfg = Config(config_dict=cfg_raw, run_id=run_id)
     try:
         res = process_single_galaxy(
             cfg=cfg,

@@ -18,6 +18,7 @@ def main() -> None:
     parser.add_argument("--storage", choices=["local", "drive"], default=None, help="Storage backend")
     parser.add_argument("--sample", type=int, default=None, help="Number of target galaxies (e.g. 500 or 4609)")
     parser.add_argument("--workers", type=int, default=None, help="Number of parallel CPU worker processes (0 = Auto)")
+    parser.add_argument("--download-workers", type=int, default=5, help="Simultaneous cube downloads (network-bound)")
     parser.add_argument("--run-id", type=str, default=None, help="Experiment run ID")
     parser.add_argument("--force-recompute", action="store_true", help="Force recomputing existing galaxies")
     args = parser.parse_args()
@@ -57,25 +58,79 @@ def main() -> None:
         from concurrent.futures import ProcessPoolExecutor, as_completed
         from ..data.processor import _worker_process_galaxy_task
 
+        import queue
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        from ..data.cubes import download_galaxy_cube, get_cube_path
+
         tasks = [
-            (cfg.raw, str(row["plateifu"]), str(row["mangaID"]), float(row["z"]), args.force_recompute)
+            (cfg.raw, str(row["plateifu"]), str(row["mangaID"]), float(row["z"]), args.force_recompute, cfg.run_id)
             for _, row in selection.iterrows()
         ]
 
-        print(f"[Stage 1] Procesando {len(tasks)} galaxias en paralelo ({n_workers} procesos CPU)...")
+        def _is_ready(plateifu: str) -> bool:
+            """Galaxy needs no download: already processed or cube already on disk."""
+            if (cfg.processed_dir / plateifu / "manifest.json").exists() and not args.force_recompute:
+                return True
+            cube = get_cube_path(cfg, plateifu)
+            return cube.exists() and cube.stat().st_size > 1000
+
+        ready = [t for t in tasks if _is_ready(t[1])]
+        to_download = [t for t in tasks if not _is_ready(t[1])]
+        dl_workers = max(1, min(int(args.download_workers), max(1, len(to_download))))
+        print(
+            f"[Stage 1] {len(tasks)} galaxias: {len(ready)} listas en disco, {len(to_download)} por descargar "
+            f"({dl_workers} descargas simultaneas, {n_workers} procesos CPU)."
+        )
+
+        results_q: "queue.Queue" = queue.Queue()
+        dl_state = {"done": len(ready)}
+        dl_lock = threading.Lock()
         ctx = multiprocessing.get_context("spawn")
         try:
-            with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as executor:
-                future_to_plate = {executor.submit(_worker_process_galaxy_task, t): t[1] for t in tasks}
-                pbar = tqdm(total=len(tasks), desc=f"Stage 1 ({n_workers} CPUs)")
+            with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as executor, \
+                    ThreadPoolExecutor(max_workers=dl_workers) as dl_pool:
 
-                for future in as_completed(future_to_plate):
-                    plateifu, res, err = future.result()
+                def _on_processed(fut, plateifu):
+                    try:
+                        results_q.put(fut.result())
+                    except Exception as exc:  # worker crashed
+                        results_q.put((plateifu, None, str(exc)))
+
+                def _submit_processing(t):
+                    executor.submit(_worker_process_galaxy_task, t).add_done_callback(
+                        lambda f, p=t[1]: _on_processed(f, p)
+                    )
+
+                def _download_then_process(t):
+                    try:
+                        download_galaxy_cube(cfg, t[1], verbose=False)
+                    except Exception as exc:
+                        with dl_lock:
+                            dl_state["done"] += 1
+                        results_q.put((t[1], None, f"descarga fallida: {exc}"))
+                        return
+                    with dl_lock:
+                        dl_state["done"] += 1
+                    _submit_processing(t)
+
+                for t in ready:
+                    _submit_processing(t)
+                for t in to_download:
+                    dl_pool.submit(_download_then_process, t)
+
+                pbar = tqdm(total=len(tasks), desc=f"Stage 1 ({n_workers} CPUs)")
+                for _ in range(len(tasks)):
+                    plateifu, res, err = results_q.get()
                     if err:
                         print(f"\n[Warning] Error procesando galaxia {plateifu}: {err}")
                     elif res and res.get("n_candidates_accepted", 0) > 0:
                         success_count += 1
                         total_candidates += res["n_candidates_accepted"]
+                    if hasattr(pbar, "set_description"):
+                        pbar.set_description(
+                            f"Stage 1 ({n_workers} CPUs | descargas {dl_state['done']}/{len(tasks)})"
+                        )
                     pbar.update(1)
                 pbar.close()
         except Exception as pool_err:

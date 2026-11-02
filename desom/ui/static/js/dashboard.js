@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDESOM1Figures();
   loadDESOM2Figures();
   loadFiguresGallery();
+  checkRunningProcessOnLoad();
 });
 
 function refreshAll() {
@@ -240,7 +241,7 @@ function renderRunsManagerList() {
           <span class="text-[10px] text-slate-500 ml-2">Actualizado: ${r.updated_at ? r.updated_at.split('T')[0] : 'N/A'}</span>
         </div>
       </div>
-      <div>
+      <div class="flex items-center space-x-2">
         ${isActive 
           ? '<button disabled class="px-3 py-1.5 bg-cyan-600/20 border border-cyan-500/30 text-astro-cyan rounded-lg text-xs font-semibold cursor-default">Corrida Activa</button>'
           : `<button onclick="selectAndContinueRun('${r.run_id}')" class="px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-xs font-semibold shadow transition flex items-center space-x-1.5">
@@ -248,10 +249,37 @@ function renderRunsManagerList() {
                <span>Cargar y Continuar</span>
              </button>`
         }
+        <button onclick="deleteRun('${r.run_id}')" class="px-2.5 py-1.5 text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-600/80 border border-rose-500/20 rounded-lg text-xs font-medium transition flex items-center space-x-1" title="Eliminar corrida ${r.run_id}">
+          <i class="fa-solid fa-trash-can text-[10px]"></i>
+          <span class="hidden sm:inline">Borrar</span>
+        </button>
       </div>
     `;
     container.appendChild(card);
   });
+}
+
+async function deleteRun(runId) {
+  if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente la corrida "${runId}" y todos sus datos/figuras?`)) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/runs/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ run_id: runId })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'deleted') {
+      await loadExperiments();
+      refreshAll();
+      renderRunsManagerList();
+    } else {
+      alert(`Error al eliminar corrida: ${data.message || 'Error desconocido'}`);
+    }
+  } catch (e) {
+    alert(`Error de red al eliminar corrida: ${e}`);
+  }
 }
 
 async function selectAndContinueRun(runId) {
@@ -610,6 +638,193 @@ async function stopPipelineStage() {
   }
 }
 
+function formatConsoleLogs(text, stageNum) {
+  if (!text) return '';
+
+  if (String(stageNum) === '1') {
+    // 1. Check if complete
+    const completeIdx = text.indexOf('[Stage 1 Complete]');
+    let completeSummary = '';
+    if (completeIdx !== -1) {
+      completeSummary = text.substring(completeIdx).trim();
+    }
+
+    // 2. Extract latest tqdm progress bar line for Stage 1
+    const chunks = text.split(/[\r\n]+/);
+    let lastProgressLine = '';
+    for (let i = chunks.length - 1; i >= 0; i--) {
+      const line = chunks[i].trim();
+      if ((line.includes('Stage 1') || line.includes('%|')) && (line.includes('it/s') || line.includes('s/it') || line.includes('100%'))) {
+        lastProgressLine = line;
+        break;
+      }
+    }
+
+    // 3. Keep warnings/errors visible if any occurred
+    const warnings = chunks.filter(c => c.includes('[Warning]') || c.includes('Error'));
+
+    if (lastProgressLine) {
+      let output = `[Voronoi Binning & Extracción de Baxels]\n${lastProgressLine}`;
+      if (warnings.length > 0) {
+        output += `\n\n` + warnings.slice(-3).join('\n');
+      }
+      if (completeSummary) {
+        output += `\n\n✓ ${completeSummary}`;
+      }
+      return output;
+    } else if (completeSummary) {
+      return `✓ ${completeSummary}`;
+    }
+
+    for (let i = chunks.length - 1; i >= 0; i--) {
+      const line = chunks[i].trim();
+      if (line.startsWith('[Stage 1] Procesando') || line.startsWith('[Catalog]')) {
+        return `${line}\nIniciando Voronoi Binning...`;
+      }
+    }
+  }
+
+  // Clean up carriage returns (\r) across all stages so lines don't stack/concatenate
+  const lines = text.split('\n');
+  const cleaned = lines.map(line => {
+    if (line.includes('\r')) {
+      const rParts = line.split('\r').filter(p => p.trim().length > 0);
+      return rParts.length > 0 ? rParts[rParts.length - 1] : '';
+    }
+    return line;
+  });
+  return cleaned.join('\n');
+}
+
+async function checkRunningProcessOnLoad() {
+  try {
+    const res = await fetch('/api/pipeline/status');
+    const data = await res.json();
+    if (data.is_running) {
+      const stage = data.active_stage || '1';
+      const indicator = document.getElementById('process-indicator');
+      if (indicator) {
+        indicator.textContent = `⏳ Ejecutando Etapa ${stage}...`;
+        indicator.className = 'text-[11px] text-amber-400 font-semibold animate-pulse';
+      }
+      document.getElementById('btn-stop-pipeline')?.classList.remove('hidden');
+      startLogPolling(stage);
+    }
+  } catch (e) {
+    console.error('Error checking active process on load:', e);
+  }
+}
+
+function updateLiveProgressBar(text, stageNum) {
+  const container = document.getElementById('live-progress-container');
+  const bar = document.getElementById('live-progress-bar');
+  const pctLabel = document.getElementById('live-progress-pct');
+  const stageNameLabel = document.getElementById('live-progress-stage-name');
+  const detailLabel = document.getElementById('live-progress-detail');
+  const etaLabel = document.getElementById('live-progress-eta');
+
+  if (!container || !bar || !pctLabel) return;
+
+  const names = {
+    '1': 'Etapa 1: Voronoi Binning & Extracción',
+    '2': 'Etapa 2: Auditoría & Dataset',
+    '3': 'Etapa 3: DESOM-1 (Espectros 15×15)',
+    '4': 'Etapa 4: DESOM-2 (Galaxias 10×10)'
+  };
+  stageNameLabel.textContent = names[stageNum] || `Etapa ${stageNum} en curso`;
+
+  // Search for tqdm pattern (take the LATEST occurrence in the text buffer, not the first)
+  const regex = /(\d+)%\|.*?\|\s*(\d+)\/(\d+)(?:\s*\[(.*?)(?:<|,)(.*?)(?:,\s*([\d\.]+\s*(?:it\/s|s\/it)))?\])?/g;
+  const matches = [...text.matchAll(regex)];
+  const match = matches.length > 0 ? matches[matches.length - 1] : null;
+
+  if (match) {
+    container.classList.remove('hidden');
+    const pct = parseInt(match[1]) || 0;
+    const current = match[2];
+    const total = match[3];
+    const elapsed = match[4] ? match[4].trim() : '';
+    const remaining = match[5] ? match[5].trim() : '';
+    const speed = match[6] ? match[6].trim() : '';
+
+    bar.style.width = `${pct}%`;
+    pctLabel.textContent = `${pct}%`;
+
+    const unit = (stageNum === '1') ? 'galaxias' : (stageNum === '3') ? 'iteraciones' : 'pasos';
+    detailLabel.textContent = `${current} / ${total} ${unit} ${speed ? `(${speed})` : ''}`;
+    if (elapsed || remaining) {
+      etaLabel.textContent = `Transcurrido: ${elapsed} | Restante: ${remaining}`;
+    }
+  } else if (text.includes('[Stage 1 Complete]') || text.includes('Finished successfully')) {
+    container.classList.remove('hidden');
+    bar.style.width = '100%';
+    bar.className = 'h-full bg-emerald-500 rounded-full transition-all duration-300';
+    pctLabel.textContent = '100%';
+    pctLabel.className = 'font-extrabold text-emerald-400 font-mono text-sm';
+    detailLabel.textContent = '✓ Etapa completada con éxito';
+    etaLabel.textContent = 'Listo';
+  }
+}
+
+async function updateLiveLossChart(stageNum) {
+  if (String(stageNum) !== '3' && String(stageNum) !== '4') return;
+  const container = document.getElementById('live-loss-container');
+  if (!container) return;
+
+  try {
+    const res = await fetch('/api/pipeline/metrics');
+    const data = await res.json();
+    if (!data.active || !data.iterations || data.iterations.length === 0) {
+      return;
+    }
+
+    container.classList.remove('hidden');
+    const titleEl = document.getElementById('live-loss-title');
+    if (titleEl) titleEl.textContent = `Curva de Convergencia en Tiempo Real (${data.stage_name})`;
+
+    const traceRecon = {
+      x: data.iterations,
+      y: data.loss_recon,
+      mode: 'lines',
+      name: 'L_recon (Train)',
+      line: { color: '#38bdf8', width: 2 }
+    };
+
+    const traces = [traceRecon];
+    if (data.val_loss_recon && data.val_loss_recon.some(v => v !== null)) {
+      traces.push({
+        x: data.iterations,
+        y: data.val_loss_recon,
+        mode: 'lines',
+        name: 'Val Recon',
+        line: { color: '#fbbf24', width: 1.5, dash: 'dot' }
+      });
+    }
+
+    const layout = {
+      paper_bgcolor: 'transparent',
+      plot_bgcolor: 'transparent',
+      margin: { l: 45, r: 20, t: 10, b: 35 },
+      xaxis: {
+        title: { text: 'Iteración', font: { size: 10, color: '#94a3b8' } },
+        tickfont: { color: '#94a3b8', size: 9 },
+        gridcolor: '#1e293b'
+      },
+      yaxis: {
+        title: { text: 'Error Reconstrucción', font: { size: 10, color: '#94a3b8' } },
+        tickfont: { color: '#94a3b8', size: 9 },
+        gridcolor: '#1e293b'
+      },
+      legend: { font: { color: '#cbd5e1', size: 9 }, orientation: 'h', y: 1.2 },
+      showlegend: true
+    };
+
+    Plotly.react('chart-live-loss', traces, layout, { responsive: true, displayModeBar: false });
+  } catch (e) {
+    console.error('Error fetching training metrics:', e);
+  }
+}
+
 function startLogPolling(stageNum) {
   if (processPollInterval) clearInterval(processPollInterval);
   document.getElementById('btn-stop-pipeline')?.classList.remove('hidden');
@@ -620,8 +835,14 @@ function startLogPolling(stageNum) {
       const text = await res.text();
       const consoleBox = document.getElementById('console-logs');
       if (text) {
-        consoleBox.textContent = text;
+        consoleBox.textContent = formatConsoleLogs(text, stageNum);
         consoleBox.scrollTop = consoleBox.scrollHeight;
+        updateLiveProgressBar(text, stageNum);
+      }
+
+      // If stage 3 or 4, also update live convergence loss curve
+      if (String(stageNum) === '3' || String(stageNum) === '4') {
+        updateLiveLossChart(stageNum);
       }
 
       // Check status
@@ -634,6 +855,7 @@ function startLogPolling(stageNum) {
         const indicator = document.getElementById('process-indicator');
         indicator.textContent = st.exit_code === 0 ? '✓ Terminado con éxito' : `Finalizado (código ${st.exit_code})`;
         indicator.className = st.exit_code === 0 ? 'text-[11px] text-emerald-400 font-semibold' : 'text-[11px] text-rose-400 font-semibold';
+        if (text) updateLiveProgressBar(text, stageNum);
         refreshAll();
       }
     } catch (e) {

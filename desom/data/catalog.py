@@ -18,7 +18,9 @@ from ..config import Config
 from ..io_utils import atomic_save_csv, sha256_file
 
 
-def download_file(url: str, destination: Path, timeout: int = 180, verbose: bool = True) -> None:
+def download_file(
+    url: str, destination: Path, timeout: int = 180, verbose: bool = True, max_retries: int = 8
+) -> None:
     """Downloads a file using curl or python urllib with resume support."""
     destination = Path(destination)
     if destination.exists() and destination.stat().st_size > 0:
@@ -32,15 +34,40 @@ def download_file(url: str, destination: Path, timeout: int = 180, verbose: bool
     if verbose:
         print(f"[Catalog] Downloading {url} -> {destination.name}...")
 
-    # Try curl first
-    try:
-        subprocess.run(
-            ["curl", "-L", "-C", "-", "-o", str(part), "--connect-timeout", "30", "--max-time", str(timeout), url],
-            check=True,
-            stdout=subprocess.DEVNULL if not verbose else None,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # Fallback to urllib
+    # Try curl first, with resume (-C -) and automatic retries. Instead of a hard total
+    # time limit (which killed slow-but-progressing downloads), abort only when the
+    # transfer stalls (<20 KB/s for 60 s) and resume from the partial file.
+    import time
+    curl_available = True
+    last_err = ""
+    for attempt in range(1, max_retries + 1):
+        cmd = [
+            "curl", "-L", "-f", "-C", "-", "-o", str(part),
+            "--connect-timeout", "30",
+            "--speed-limit", "20000", "--speed-time", "60",
+        ]
+        if not verbose:
+            cmd += ["-sS"]
+        cmd.append(url)
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL if not verbose else None,
+                stderr=subprocess.PIPE if not verbose else None,
+                text=True,
+            )
+        except FileNotFoundError:
+            curl_available = False
+            break
+        # 0 = complete; 33 = range not satisfiable (partial file already complete)
+        if proc.returncode in (0, 33) and part.exists() and part.stat().st_size > 0:
+            break
+        last_err = (proc.stderr or "").strip() if not verbose else f"curl exit {proc.returncode}"
+        time.sleep(min(30, 2 ** attempt))
+    else:
+        raise IOError(f"Download failed after {max_retries} attempts: {url} ({last_err})")
+
+    if not curl_available:
         import urllib.request
         urllib.request.urlretrieve(url, str(part))
 

@@ -34,6 +34,7 @@ class DashboardAPI:
     def __init__(self, storage_backend: Optional[str] = None, n_target: Optional[int] = None, run_id: Optional[str] = None):
         self.cfg = get_config(storage_backend=storage_backend, n_target=n_target, run_id=run_id)
         self.running_process: Optional[subprocess.Popen] = None
+        self.active_stage: Optional[str] = None
         self.process_lock = threading.Lock()
         self.last_logs: List[str] = []
 
@@ -151,6 +152,33 @@ class DashboardAPI:
             "n_target": int(n_target),
             "path": str(self.cfg.run_dir),
         }
+
+    def delete_run(self, run_id: str) -> Dict[str, Any]:
+        """Deletes an experiment run directory and switches to another run if active."""
+        clean_id = "".join(c for c in run_id.strip() if c.isalnum() or c in ("_", "-"))
+        if not clean_id:
+            return {"status": "error", "message": "ID de corrida no válido."}
+
+        target_dir = self.cfg.experiments_dir / clean_id
+        if not target_dir.exists():
+            return {"status": "error", "message": f"La corrida '{clean_id}' no existe."}
+
+        import shutil
+        try:
+            shutil.rmtree(target_dir)
+        except Exception as e:
+            return {"status": "error", "message": f"Error eliminando corrida: {e}"}
+
+        # If the deleted run was the active one, switch to another available run
+        remaining_runs = [d.name for d in sorted(self.cfg.experiments_dir.iterdir(), reverse=True)
+                          if d.is_dir() and not d.name.startswith(".")]
+        if self.cfg.run_id == clean_id:
+            if remaining_runs:
+                self.switch_run(remaining_runs[0])
+            else:
+                self.switch_run("default")
+
+        return {"status": "deleted", "run_id": clean_id, "active_run": self.cfg.run_id}
 
     def get_pipeline_state(self) -> Dict[str, Any]:
         """Returns current state and progress for active run."""
@@ -472,6 +500,7 @@ class DashboardAPI:
             env = dict(os.environ)
             env["PYTHONUNBUFFERED"] = "1"
 
+            self.active_stage = str(stage)
             self.running_process = subprocess.Popen(
                 cmd,
                 stdout=f_out,
@@ -522,9 +551,54 @@ class DashboardAPI:
         """Checks if a background pipeline run is still active."""
         with self.process_lock:
             if self.running_process is None:
-                return {"is_running": False, "exit_code": None}
+                return {"is_running": False, "exit_code": None, "active_stage": self.active_stage}
             ret = self.running_process.poll()
             return {
                 "is_running": (ret is None),
                 "exit_code": ret,
+                "active_stage": self.active_stage,
+                "pid": self.running_process.pid if self.running_process else None,
             }
+
+    def get_training_metrics(self) -> Dict[str, Any]:
+        """Reads real-time convergence log (desom1_log.csv or desom2_log.csv) for Plotly loss curve."""
+        import csv
+        d1_csv = self.cfg.desom1_dir / "desom1_log.csv"
+        d2_csv = self.cfg.desom2_dir / "desom2_log.csv"
+        target_csv = d2_csv if (d2_csv.exists() and d2_csv.stat().st_size > 50) else d1_csv
+
+        if not target_csv.exists() or target_csv.stat().st_size < 10:
+            return {"active": False, "rows": []}
+
+        rows = []
+        try:
+            with open(target_csv, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for r in reader:
+                    try:
+                        rows.append({
+                            "iter": int(r.get("iter", 0)),
+                            "T": float(r.get("T", 0.0)),
+                            "loss_total": float(r.get("loss_total", 0.0)),
+                            "loss_recon": float(r.get("loss_recon", 0.0)),
+                            "loss_som": float(r.get("loss_som", 0.0)),
+                            "val_loss_recon": float(r.get("val_loss_recon", 0.0)) if r.get("val_loss_recon") else None,
+                        })
+                    except (ValueError, TypeError):
+                        continue
+        except Exception:
+            return {"active": False, "rows": []}
+
+        if len(rows) > 300:
+            step = max(1, len(rows) // 300)
+            rows = rows[::step]
+
+        return {
+            "active": True,
+            "stage_name": "DESOM-2" if target_csv == d2_csv else "DESOM-1",
+            "iterations": [r["iter"] for r in rows],
+            "loss_recon": [r["loss_recon"] for r in rows],
+            "val_loss_recon": [r["val_loss_recon"] for r in rows],
+            "loss_som": [r["loss_som"] for r in rows],
+            "temperature": [r["T"] for r in rows],
+        }

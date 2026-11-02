@@ -72,7 +72,8 @@ def main() -> None:
     evaluate_model(model_d1, X[idx_test], cfg.desom1_dir, tag="desom1")
 
     # 3. Figure 3: 15x15 spectral prototypes with the S1..S9 spectra of Figure 1 located on it
-    plot_figure_desom1_prototypes(cfg, model_d1, wave_rest, samples=X[pick_sample_indices(X)])
+    sample_idx = pick_sample_indices(X, wave_rest=wave_rest, model=model_d1)
+    plot_figure_desom1_prototypes(cfg, model_d1, wave_rest, samples=X[sample_idx])
 
     # 4. Generate Fingerprints for all galaxies
     state.update_stage("stage_04_fingerprints", "running")

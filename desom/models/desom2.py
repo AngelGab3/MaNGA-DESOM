@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from tensorflow.keras import backend as K
-from tensorflow.keras.layers import Conv2D, Dense, Flatten, Input, Reshape
-from tensorflow.keras.models import Model
+from keras import backend as K
+from keras.layers import Conv2D, Dense, Flatten, Input, Reshape
+from keras.models import Model
 
 from .base import BaseDESOM
 
@@ -25,7 +25,7 @@ def build_cnn_2dae(
     input_layer = Input(shape=input_shape, name="fingerprint_input")
     x = Conv2D(16, (3, 3), activation="relu", padding="same", name="enc_conv")(input_layer)
 
-    shape_before_flatten = K.int_shape(x)[1:]
+    shape_before_flatten = x.shape[1:]
     num_neurons = int(shape_before_flatten[0] * shape_before_flatten[1] * shape_before_flatten[2])
 
     x = Flatten()(x)

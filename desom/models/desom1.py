@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from tensorflow.keras import backend as K
-from tensorflow.keras.layers import (
+from keras import backend as K
+from keras.layers import (
     Conv1D,
     Dense,
     Flatten,
@@ -18,7 +18,7 @@ from tensorflow.keras.layers import (
     Reshape,
     UpSampling1D,
 )
-from tensorflow.keras.models import Model
+from keras.models import Model
 
 from .base import BaseDESOM
 
@@ -42,7 +42,7 @@ def build_cnn_1dae(
         x = LeakyReLU(negative_slope=alpha)(x)
         x = MaxPooling1D(pool_size=2)(x)
 
-    shape_before_flatten = K.int_shape(x)[1:]
+    shape_before_flatten = x.shape[1:]
     num_neurons = int(shape_before_flatten[0] * shape_before_flatten[1])
 
     x = Flatten()(x)

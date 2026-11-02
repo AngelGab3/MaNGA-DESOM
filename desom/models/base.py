@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Tuple, Union
 
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
+import keras
+from keras.models import Model
+from keras.optimizers import Adam
 
 from .som_layer import SOMLayer, grid_distance_matrix, som_loss
 
@@ -58,7 +58,7 @@ class BaseDESOM:
     def set_map_distance(self, mode: str) -> None:
         """Selects how grid distance between SOM nodes is measured ("manhattan" or "paper")."""
         self.map_distance = mode
-        self.grid_dist = tf.constant(grid_distance_matrix(self.map_size, mode), dtype=tf.float32)
+        self.grid_dist = np.array(grid_distance_matrix(self.map_size, mode), dtype=np.float32)
 
     def compile(self) -> None:
         """Compiles with MSE reconstruction and gamma-weighted SOM loss."""
@@ -91,21 +91,45 @@ class BaseDESOM:
         """Returns Best Matching Unit index (0 .. n_prototypes-1) for each input."""
         return np.argmin(self.distances(x, batch_size=batch_size), axis=1)
 
-    @tf.function(reduce_retracing=True)
-    def _bmu_weights_graph(self, x: tf.Tensor, T: tf.Tensor):
-        d = self.bmu_model(x, training=False)
-        bmu = tf.argmin(d, axis=1)
-        dist = tf.gather(self.grid_dist, bmu)
-        w = tf.exp(-tf.square(dist) / tf.maximum(tf.square(T), 1e-8))
-        return d, w
-
     def bmu_weights(self, x: np.ndarray, T: float) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Computes (distances, neighbourhood weights) for a batch inside a compiled graph.
-        This replaces the per-iteration `model.predict` of the original code.
+        Computes (distances, neighbourhood weights) for a batch.
+        On PyTorch backend (GPU), runs on CUDA with zero graph-retracing overhead.
+        On TensorFlow backend, uses tf.function compiled graph.
         """
-        d, w = self._bmu_weights_graph(tf.convert_to_tensor(x, dtype=tf.float32), tf.constant(T, tf.float32))
-        return d.numpy(), w.numpy()
+        import keras
+        backend = keras.backend.backend()
+        if backend == "torch":
+            import torch
+            with torch.no_grad():
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                xt = torch.as_tensor(x, device=device, dtype=torch.float32)
+                d_t = self.bmu_model(xt, training=False)
+                bmu = torch.argmin(d_t, dim=1)
+                dist_grid = torch.as_tensor(self.grid_dist, device=device)[bmu]
+                w_t = torch.exp(-torch.square(dist_grid) / max(T * T, 1e-8))
+                return d_t.cpu().numpy(), w_t.cpu().numpy()
+        elif backend == "tensorflow":
+            import tensorflow as tf
+            if not hasattr(self, "_tf_grid_dist"):
+                self._tf_grid_dist = tf.constant(self.grid_dist, dtype=tf.float32)
+            if not hasattr(self, "_bmu_weights_graph_fn"):
+                @tf.function(reduce_retracing=True)
+                def _graph_fn(inp_x, temp):
+                    d = self.bmu_model(inp_x, training=False)
+                    bmu = tf.argmin(d, axis=1)
+                    dist = tf.gather(self._tf_grid_dist, bmu)
+                    w = tf.exp(-tf.square(dist) / tf.maximum(tf.square(temp), 1e-8))
+                    return d, w
+                self._bmu_weights_graph_fn = _graph_fn
+            d, w = self._bmu_weights_graph_fn(tf.convert_to_tensor(x, dtype=tf.float32), tf.constant(T, tf.float32))
+            return d.numpy(), w.numpy()
+        else:
+            d = self.distances(x)
+            bmu = np.argmin(d, axis=1)
+            dist = self.grid_dist[bmu]
+            w = np.exp(-np.square(dist) / max(T * T, 1e-8))
+            return d, w
 
     @property
     def prototypes(self) -> np.ndarray:

@@ -7,18 +7,19 @@ and Gaussian neighborhood weighting.
 from __future__ import annotations
 
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.layers import InputSpec, Layer
+import keras
+from keras import ops
+from keras.layers import InputSpec, Layer
 
 
-def som_loss(weights: tf.Tensor, distances: tf.Tensor) -> tf.Tensor:
+def som_loss(weights, distances):
     """
     SOM reconstruction loss: weighted sum of prototype distances.
     L_som = mean_i ( sum_j w_ij * ||z_i - m_j||^2 )
     """
-    w = tf.cast(weights, tf.float32)
-    d = tf.cast(distances, tf.float32)
-    return tf.reduce_mean(tf.reduce_sum(w * d, axis=1))
+    w = ops.cast(weights, "float32")
+    d = ops.cast(distances, "float32")
+    return ops.mean(ops.sum(w * d, axis=1))
 
 
 class SOMLayer(Layer):
@@ -53,14 +54,14 @@ class SOMLayer(Layer):
             self.initial_prototypes = None
         self.built = True
 
-    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+    def call(self, inputs):
         """
         Computes squared euclidean distances:
         d_ij = ||z_i - m_j||^2
         """
         # Shape: (batch_size, 1, latent_dim) - (1, n_prototypes, latent_dim)
-        diff = tf.expand_dims(inputs, axis=1) - self.prototypes
-        return tf.reduce_sum(tf.square(diff), axis=2)
+        diff = ops.expand_dims(inputs, axis=1) - self.prototypes
+        return ops.sum(ops.square(diff), axis=2)
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0], self.n_prototypes)

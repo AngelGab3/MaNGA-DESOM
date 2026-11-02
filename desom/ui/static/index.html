@@ -642,8 +642,8 @@
             </div>
 
             <!-- Execution Console Log Window -->
-            <div class="mt-4 bg-space-900 p-4 rounded-xl border border-space-700">
-              <div class="flex items-center justify-between mb-2">
+            <div class="mt-4 bg-space-900 p-4 rounded-xl border border-space-700 space-y-3">
+              <div class="flex items-center justify-between mb-1">
                 <span class="text-xs font-semibold text-slate-400 flex items-center space-x-1.5">
                   <i class="fa-solid fa-terminal text-emerald-400"></i>
                   <span>Consola de Ejecución en Vivo</span>
@@ -655,7 +655,38 @@
                   </button>
                 </div>
               </div>
-              <pre id="console-logs" class="h-52 overflow-y-auto text-xs font-mono text-emerald-400/90 whitespace-pre-wrap select-all">Listo para ejecutar etapas...</pre>
+
+              <!-- Real-time Progress Bar & Percentage Widget -->
+              <div id="live-progress-container" class="hidden bg-space-950 p-3 rounded-xl border border-space-700/80 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span id="live-progress-title" class="font-bold text-white flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                    <span id="live-progress-stage-name">Progreso en Vivo</span>
+                  </span>
+                  <span id="live-progress-pct" class="font-extrabold text-astro-cyan font-mono text-sm">0%</span>
+                </div>
+                <div class="w-full h-2.5 bg-space-900 rounded-full overflow-hidden border border-space-700/50 p-0.5">
+                  <div id="live-progress-bar" class="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-full transition-all duration-300 w-0"></div>
+                </div>
+                <div class="flex items-center justify-between text-[11px] text-slate-400">
+                  <span id="live-progress-detail" class="text-slate-300 font-medium">Iniciando...</span>
+                  <span id="live-progress-eta" class="font-mono text-slate-400 text-[10px]">--:--</span>
+                </div>
+              </div>
+
+              <!-- Real-time Training Loss Curve (Stage 3 & 4) -->
+              <div id="live-loss-container" class="hidden bg-space-950 p-3 rounded-xl border border-space-700/80 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-white flex items-center space-x-1.5">
+                    <i class="fa-solid fa-chart-line text-astro-pink"></i>
+                    <span id="live-loss-title">Curva de Pérdida en Tiempo Real</span>
+                  </span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-astro-purple border border-purple-500/20">L_recon vs Val_rec</span>
+                </div>
+                <div id="chart-live-loss" class="h-44 w-full"></div>
+              </div>
+
+              <pre id="console-logs" class="h-48 overflow-y-auto text-xs font-mono text-emerald-400/90 whitespace-pre-wrap select-all bg-space-950/70 p-2.5 rounded-lg border border-space-800">Listo para ejecutar etapas...</pre>
             </div>
           </div>
         </div>
